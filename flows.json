@@ -1,0 +1,353 @@
+[
+    {
+        "id": "9f1b08f055ae0336",
+        "type": "tab",
+        "label": "Flow 1",
+        "disabled": false,
+        "info": "",
+        "env": []
+    },
+    {
+        "id": "2b5efe19b4ea438d",
+        "type": "debug",
+        "z": "9f1b08f055ae0336",
+        "name": "debug 1",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "payload",
+        "targetType": "msg",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 760,
+        "y": 120,
+        "wires": []
+    },
+    {
+        "id": "a2d06794c826e423",
+        "type": "function",
+        "z": "9f1b08f055ae0336",
+        "name": "SHRAMS Desicion Engine",
+        "func": "//--------------------------------------------------\n// SHRAMS Comfort Engine V5.1\n//--------------------------------------------------\n\n// Wait until first occupancy message arrives\n\nif(msg.topic !== \"hostel/room1/occupancy\")\n{\n    return null;\n}\n\nlet occupancy = msg.payload;\n\n// Desired outputs\n\nlet desiredLight =\n    (occupancy === \"PRESENT\")\n    ? \"LIGHT_ON\"\n    : \"LIGHT_OFF\";\n\nlet desiredFan =\n    (occupancy === \"PRESENT\")\n    ? \"FAN_ON\"\n    : \"FAN_OFF\";\n\n// Previous outputs\n\nlet lastLight = context.get(\"lastLight\") || \"\";\nlet lastFan   = context.get(\"lastFan\") || \"\";\n\n// Light\n\nif(desiredLight !== lastLight)\n{\n    node.send({\n        topic:\"hostel/room1/control/light\",\n        payload:desiredLight\n    });\n\n    context.set(\"lastLight\", desiredLight);\n}\n\n// Fan\n\nif(desiredFan !== lastFan)\n{\n    node.send({\n        topic:\"hostel/room1/control/fan\",\n        payload:desiredFan\n    });\n\n    context.set(\"lastFan\", desiredFan);\n}\n\nreturn null;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 380,
+        "y": 160,
+        "wires": [
+            [
+                "2b5efe19b4ea438d",
+                "e8aaf49ac668efee"
+            ]
+        ]
+    },
+    {
+        "id": "259b7b6059bea611",
+        "type": "mqtt in",
+        "z": "9f1b08f055ae0336",
+        "name": "",
+        "topic": "hostel/room1/occupancy",
+        "qos": "2",
+        "datatype": "auto-detect",
+        "broker": "e56d2795e9de4c1d",
+        "nl": false,
+        "rap": true,
+        "rh": 0,
+        "inputs": 0,
+        "x": 130,
+        "y": 40,
+        "wires": [
+            [
+                "a2d06794c826e423",
+                "b522bb6eab9a4aeb"
+            ]
+        ]
+    },
+    {
+        "id": "938e2126111c3446",
+        "type": "mqtt in",
+        "z": "9f1b08f055ae0336",
+        "name": "",
+        "topic": "hostel/room1/temperature",
+        "qos": "2",
+        "datatype": "auto-detect",
+        "broker": "e56d2795e9de4c1d",
+        "nl": false,
+        "rap": true,
+        "rh": 0,
+        "inputs": 0,
+        "x": 130,
+        "y": 280,
+        "wires": [
+            [
+                "935207ec8c54bc09",
+                "9b2aecbf3acb98de"
+            ]
+        ]
+    },
+    {
+        "id": "e8aaf49ac668efee",
+        "type": "mqtt out",
+        "z": "9f1b08f055ae0336",
+        "name": "",
+        "topic": "",
+        "qos": "",
+        "retain": "",
+        "respTopic": "",
+        "contentType": "",
+        "userProps": "",
+        "correl": "",
+        "expiry": "",
+        "broker": "e56d2795e9de4c1d",
+        "x": 750,
+        "y": 200,
+        "wires": []
+    },
+    {
+        "id": "e1c22b2069d495f1",
+        "type": "mqtt out",
+        "z": "9f1b08f055ae0336",
+        "name": "",
+        "topic": "hostel/room1/control/alarm",
+        "qos": "",
+        "retain": "",
+        "respTopic": "",
+        "contentType": "",
+        "userProps": "",
+        "correl": "",
+        "expiry": "",
+        "broker": "e56d2795e9de4c1d",
+        "x": 820,
+        "y": 360,
+        "wires": []
+    },
+    {
+        "id": "935207ec8c54bc09",
+        "type": "function",
+        "z": "9f1b08f055ae0336",
+        "name": "Safety Decision Engine",
+        "func": "//--------------------------------------------------\n// SHRAMS Safety Engine V5.1\n//--------------------------------------------------\n\nconst GAS_THRESHOLD = 3500;\n\n// Read stored values\n\nlet temperature = context.get(\"temperature\");\nlet gas = context.get(\"gas\");\n\n// Update incoming value\n\nif(msg.topic === \"hostel/room1/temperature\")\n{\n    temperature = Number(msg.payload);\n    context.set(\"temperature\", temperature);\n}\n\nif(msg.topic === \"hostel/room1/gas\")\n{\n    gas = Number(msg.payload);\n    context.set(\"gas\", gas);\n}\n\n// Wait until BOTH values received\n\nif(temperature === undefined || gas === undefined)\n{\n    return null;\n}\n\n// Determine state\n\nlet alarm = \"SAFE\";\n\nif(temperature >= 40 && gas >= GAS_THRESHOLD)\n{\n    alarm = \"FIRE\";\n}\nelse if(temperature >= 40)\n{\n    alarm = \"WARNING_TEMP\";\n}\nelse if(gas >= GAS_THRESHOLD)\n{\n    alarm = \"WARNING_GAS\";\n}\n\n// Publish only on change\n\nlet lastAlarm = context.get(\"lastAlarm\");\n\nif(alarm !== lastAlarm)\n{\n    context.set(\"lastAlarm\", alarm);\n\n    node.warn(\"Temperature = \" + temperature);\n    node.warn(\"Gas = \" + gas);\n    node.warn(\"Safety State = \" + alarm);\n\n    msg.payload = alarm;\n\n    return msg;\n}\n\nreturn null;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 370,
+        "y": 400,
+        "wires": [
+            [
+                "7cf8af41f8cc30a6"
+            ]
+        ]
+    },
+    {
+        "id": "7cf8af41f8cc30a6",
+        "type": "switch",
+        "z": "9f1b08f055ae0336",
+        "name": "",
+        "property": "payload",
+        "propertyType": "msg",
+        "rules": [
+            {
+                "t": "eq",
+                "v": "SAFE",
+                "vt": "str"
+            },
+            {
+                "t": "eq",
+                "v": "WARNING_GAS",
+                "vt": "str"
+            },
+            {
+                "t": "eq",
+                "v": "WARNING_TEMP",
+                "vt": "str"
+            },
+            {
+                "t": "eq",
+                "v": "FIRE",
+                "vt": "str"
+            }
+        ],
+        "checkall": "true",
+        "repair": false,
+        "outputs": 4,
+        "x": 570,
+        "y": 400,
+        "wires": [
+            [
+                "fc66406a89a59edf"
+            ],
+            [
+                "e1c22b2069d495f1"
+            ],
+            [
+                "165c312ce9656980"
+            ],
+            [
+                "2e7cb3f4d654ca95"
+            ]
+        ]
+    },
+    {
+        "id": "fc66406a89a59edf",
+        "type": "mqtt out",
+        "z": "9f1b08f055ae0336",
+        "name": "",
+        "topic": "hostel/room1/control/alarm",
+        "qos": "",
+        "retain": "",
+        "respTopic": "",
+        "contentType": "",
+        "userProps": "",
+        "correl": "",
+        "expiry": "",
+        "broker": "e56d2795e9de4c1d",
+        "x": 820,
+        "y": 280,
+        "wires": []
+    },
+    {
+        "id": "165c312ce9656980",
+        "type": "mqtt out",
+        "z": "9f1b08f055ae0336",
+        "name": "",
+        "topic": "hostel/room1/control/alarm",
+        "qos": "",
+        "retain": "",
+        "respTopic": "",
+        "contentType": "",
+        "userProps": "",
+        "correl": "",
+        "expiry": "",
+        "broker": "e56d2795e9de4c1d",
+        "x": 820,
+        "y": 440,
+        "wires": []
+    },
+    {
+        "id": "2e7cb3f4d654ca95",
+        "type": "mqtt out",
+        "z": "9f1b08f055ae0336",
+        "name": "",
+        "topic": "hostel/room1/control/alarm",
+        "qos": "",
+        "retain": "",
+        "respTopic": "",
+        "contentType": "",
+        "userProps": "",
+        "correl": "",
+        "expiry": "",
+        "broker": "e56d2795e9de4c1d",
+        "x": 820,
+        "y": 520,
+        "wires": []
+    },
+    {
+        "id": "8efb1120719ae8c8",
+        "type": "mqtt in",
+        "z": "9f1b08f055ae0336",
+        "name": "",
+        "topic": "hostel/room1/gas",
+        "qos": "2",
+        "datatype": "auto-detect",
+        "broker": "e56d2795e9de4c1d",
+        "nl": false,
+        "rap": true,
+        "rh": 0,
+        "inputs": 0,
+        "x": 160,
+        "y": 520,
+        "wires": [
+            [
+                "935207ec8c54bc09",
+                "1fc9edc1d9930d45"
+            ]
+        ]
+    },
+    {
+        "id": "b522bb6eab9a4aeb",
+        "type": "debug",
+        "z": "9f1b08f055ae0336",
+        "name": "debug 2",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "payload",
+        "targetType": "msg",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 380,
+        "y": 40,
+        "wires": []
+    },
+    {
+        "id": "9b2aecbf3acb98de",
+        "type": "debug",
+        "z": "9f1b08f055ae0336",
+        "name": "debug 3",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "false",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 380,
+        "y": 280,
+        "wires": []
+    },
+    {
+        "id": "1fc9edc1d9930d45",
+        "type": "debug",
+        "z": "9f1b08f055ae0336",
+        "name": "debug 4",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "false",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 380,
+        "y": 520,
+        "wires": []
+    },
+    {
+        "id": "e56d2795e9de4c1d",
+        "type": "mqtt-broker",
+        "name": "",
+        "broker": "broker.emqx.io",
+        "port": 1883,
+        "clientid": "",
+        "autoConnect": true,
+        "usetls": false,
+        "protocolVersion": 4,
+        "keepalive": 60,
+        "cleansession": true,
+        "autoUnsubscribe": true,
+        "birthTopic": "",
+        "birthQos": "0",
+        "birthRetain": "false",
+        "birthPayload": "",
+        "birthMsg": {},
+        "closeTopic": "",
+        "closeQos": "0",
+        "closeRetain": "false",
+        "closePayload": "",
+        "closeMsg": {},
+        "willTopic": "",
+        "willQos": "0",
+        "willRetain": "false",
+        "willPayload": "",
+        "willMsg": {},
+        "userProps": "",
+        "sessionExpiry": ""
+    }
+]
